@@ -32,10 +32,11 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/counselors', counselorRoutes);
 app.use('/api/session-notes', sessionNotesRoutes);
 app.use('/api/payment', paymentRoutes);
+const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB Connected');
-    server.listen(5000, () => {
+    server.listen(PORT, () => {
       console.log(`Server running on port 5000 `);
     });
   })
