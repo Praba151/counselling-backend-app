@@ -22,18 +22,21 @@ const allowedOrigins = [
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL,
+    origin: ["http://localhost:5173",
+      "https://counselling-frontend-app.netlify.app",],
     methods: ["GET", "POST"],
   },
 });
 initSocket(io);
 
-app.use(cors({ origin: allowedOrigins }));
+app.use(cors({ 
+  origin: allowedOrigins,
+credentials:true, }));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
 app.get("/api", (req, res) => {
-  res.json({ message: "Backend working! 🚀" });
+  res.json({ message: "Backend working!" });
 });
 
 app.use("/api/auth", authRoutes);
@@ -41,13 +44,13 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/counselors", counselorRoutes);
 app.use("/api/session-notes", sessionNotesRoutes);
 app.use("/api/payment", paymentRoutes);
-const _PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB Connected");
-    server.listen(_PORT, () => {
-      console.log(`Server running on port ${_PORT}`);
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
     });
   })
   .catch((err) => console.log("MongoDB Error ", err));
