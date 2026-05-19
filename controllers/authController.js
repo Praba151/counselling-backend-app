@@ -5,6 +5,9 @@ const jwt = require('jsonwebtoken');
 exports.register = async (req, res) => {
   const { name, email, password, role } = req.body;
   try {
+    if(! name || !email || !password){
+      res.status(200).json("All fields are required")
+    }
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already registered' });
     const hashed = await bcrypt.hash(password, 10);
