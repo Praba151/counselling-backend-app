@@ -35,10 +35,6 @@ credentials:true, }));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
-app.get("/api", (req, res) => {
-  res.json({ message: "Backend working!" });
-});
-
 app.use("/api/auth", authRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/counselors", counselorRoutes);
