@@ -25,8 +25,6 @@ const createOrder = async (req, res) => {
 const verifyPayment = async (req, res) => {
   try {
     const { razorpayOrderId, razorpayPaymentId, razorpaySignature, appointmentId } = req.body;
-
-    // Step 1: Verify signature
     const body = razorpayOrderId + '|' + razorpayPaymentId;
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
@@ -37,7 +35,6 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
 
-    // Step 2: Create Daily.co video room
     let videoRoomUrl = null;
     try {
       const dailyRes = await fetch('https://api.daily.co/v1/rooms', {
@@ -56,8 +53,6 @@ const verifyPayment = async (req, res) => {
     } catch (e) {
       console.log('Daily.co room creation failed:', e.message);
     }
-
-    // Step 3: Update appointment
     const appointment = await Appointment.findByIdAndUpdate(
       appointmentId,
       {
@@ -68,8 +63,6 @@ const verifyPayment = async (req, res) => {
       },
       { new: true }
     ).populate('clientId counselorId');
-
-    // Step 4: Send confirmation email
     try {
       const transporter = nodemailer.createTransport({
         service: 'gmail',
