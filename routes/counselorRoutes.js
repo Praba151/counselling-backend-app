@@ -7,4 +7,4 @@ router.get('/', getAllCounselors);
 router.get('/:id', getCounselorById);
 router.post('/profile', protect, counselorOnly, upsertProfile);
 
-module.exports = router;
+module.exports = router; 
