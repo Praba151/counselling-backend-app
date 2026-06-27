@@ -40,7 +40,7 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/counselors", counselorRoutes);
 app.use("/api/session-notes", sessionNotesRoutes);
 app.use("/api/payment", paymentRoutes);
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
