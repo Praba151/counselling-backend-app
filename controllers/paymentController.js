@@ -72,9 +72,9 @@ const verifyPayment = async (req, res) => {
         },
       });
       await transporter.sendMail({
-        from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
+        from: `"Counseling" <${process.env.EMAIL_USER}>`,
         to: appointment.clientId?.email,
-        subject: '✅ Booking Confirmed — MindBridge',
+        subject: ' Booking Confirmed ',
         html: `
           <h2>Your session is confirmed!</h2>
           <p>Hi ${appointment.clientId?.name},</p>
