@@ -1,6 +1,7 @@
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const Appointment = require('../models/Appointment');
+const Payment = require('../models/Payment');
 const nodemailer = require('nodemailer');
 
 const razorpay = new Razorpay({
@@ -11,11 +12,28 @@ const razorpay = new Razorpay({
 const createOrder = async (req, res) => {
   try {
     const { amount, appointmentId } = req.body;
+
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+    if (appointment.clientId.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Not your appointment' });
+    }
+
     const order = await razorpay.orders.create({
       amount: amount * 100,
       currency: 'INR',
       receipt: `receipt_${appointmentId}`,
     });
+
+    
+    await Payment.create({
+      clientId: req.user.id,
+      appointmentId,
+      razorpayOrderId: order.id,
+      amount,
+      status: 'created',
+    });
+
     res.json({ orderId: order.id, amount: order.amount });
   } catch (err) {
     res.status(500).json({ message: 'Order creation failed', error: err.message });
@@ -32,6 +50,7 @@ const verifyPayment = async (req, res) => {
       .digest('hex');
 
     if (expectedSignature !== razorpaySignature) {
+      await Payment.findOneAndUpdate({ razorpayOrderId }, { status: 'failed' });
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
 
@@ -53,6 +72,7 @@ const verifyPayment = async (req, res) => {
     } catch (e) {
       console.log('Daily.co room creation failed:', e.message);
     }
+
     const appointment = await Appointment.findByIdAndUpdate(
       appointmentId,
       {
@@ -63,6 +83,13 @@ const verifyPayment = async (req, res) => {
       },
       { new: true }
     ).populate('clientId counselorId');
+
+    
+    await Payment.findOneAndUpdate(
+      { razorpayOrderId },
+      { razorpayPaymentId, status: 'paid' }
+    );
+
     try {
       const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -72,9 +99,9 @@ const verifyPayment = async (req, res) => {
         },
       });
       await transporter.sendMail({
-        from: `"Counseling" <${process.env.EMAIL_USER}>`,
+        from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
         to: appointment.clientId?.email,
-        subject: ' Booking Confirmed ',
+        subject: '✅ Booking Confirmed — MindBridge',
         html: `
           <h2>Your session is confirmed!</h2>
           <p>Hi ${appointment.clientId?.name},</p>
@@ -99,4 +126,15 @@ const verifyPayment = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, verifyPayment };
+const getMyPayments = async (req, res) => {
+  try {
+    const payments = await Payment.find({ clientId: req.user.id })
+      .populate('appointmentId')
+      .sort('-createdAt');
+    res.json(payments);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { createOrder, verifyPayment, getMyPayments };

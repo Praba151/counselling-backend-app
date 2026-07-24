@@ -10,6 +10,8 @@ const appointmentRoutes = require("./routes/appointmentRoutes");
 const counselorRoutes = require("./routes/counselorRoutes");
 const sessionNotesRoutes = require("./routes/sessionNotesRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const chatRoutes = require("./routes/chatRoutes");
+const emailRoutes = require("./routes/emailRoutes");
 const { initSocket } = require("./socket/socketHandler");
 
 const app = express();
@@ -40,6 +42,8 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/counselors", counselorRoutes);
 app.use("/api/session-notes", sessionNotesRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/email", emailRoutes);
 const PORT = process.env.PORT || 3000;
 mongoose
   .connect(process.env.MONGO_URI)

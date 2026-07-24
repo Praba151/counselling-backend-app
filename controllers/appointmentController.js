@@ -4,33 +4,41 @@ const CounselorProfile = require('../models/CounselorProfile');
 exports.bookAppointment = async (req, res) => {
   const { counselorId, date, time, sessionType } = req.body;
   try {
-    if (!counselorId || !date || !time || !sessionType)
-      return res.status(400).json({ message: 'Please fill all fields' });
-    const existing = await Appointment.findOne({
-      counselorId, date, time,
-      status: { $in: ['pending', 'confirmed'] }
-    });
-    if (existing)
-      return res.status(400).json({ message: 'This slot is already booked. Please choose another.' });
-    await CounselorProfile.updateOne(
-      { userId: counselorId, 'availableSlots.date': date, 'availableSlots.time': time },
-      { $set: { 'availableSlots.$.isBooked': true } }
-    );
+    
+    const profile = await CounselorProfile.findOne({ userId: counselorId });
+    if (!profile) return res.status(404).json({ message: 'Counselor profile not found' });
 
-    const appointment = await Appointment.create({ clientId: req.user.id, counselorId, date, time, sessionType });
+    const slot = profile.availableSlots.find(s => s.date === date && s.time === time);
+    if (!slot) return res.status(400).json({ message: 'Selected slot is not available' });
+    if (slot.isBooked) return res.status(409).json({ message: 'This slot has just been booked by someone else. Please pick another.' });
+
+  
+    slot.isBooked = true;
+    await profile.save();
+
+    const appointment = await Appointment.create({
+      clientId: req.user.id,
+      counselorId,
+      date,
+      time,
+      sessionType
+    });
     res.status(201).json(appointment);
   } catch (err) {
-    res.status(500).json({ message: 'Booking failed. Please try again.' });
+    res.status(500).json({ message: err.message });
   }
 };
 
 exports.getMyAppointments = async (req, res) => {
   try {
-    const filter = req.user.role === 'client' ? { clientId: req.user.id } : { counselorId: req.user.id };
+    const filter = req.user.role === 'client'
+      ? { clientId: req.user.id }
+      : { counselorId: req.user.id };
+
     const appointments = await Appointment.find(filter)
       .populate('clientId', 'name email')
       .populate('counselorId', 'name email')
-      .sort({ createdAt: -1 }); // ADDED: newest first
+      .sort('-createdAt');
     res.json(appointments);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -39,33 +47,37 @@ exports.getMyAppointments = async (req, res) => {
 
 exports.updateStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    const valid = ['pending', 'confirmed', 'completed', 'cancelled'];
-    if (!valid.includes(status))
-      return res.status(400).json({ message: 'Invalid status' });
-
-    const appointment = await Appointment.findByIdAndUpdate(req.params.id, { status }, { new: true });
-    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
-    res.json(appointment);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-exports.cancelAppointment = async (req, res) => {
-  try {
     const appointment = await Appointment.findById(req.params.id);
     if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
 
-    if (appointment.status === 'completed')
-      return res.status(400).json({ message: 'Cannot cancel a completed appointment' });
-    await CounselorProfile.updateOne(
-      { userId: appointment.counselorId, 'availableSlots.date': appointment.date, 'availableSlots.time': appointment.time },
-      { $set: { 'availableSlots.$.isBooked': false } }
-    );
+    const { status } = req.body;
+    const userId = req.user.id.toString();
+    const isCounselor = appointment.counselorId.toString() === userId;
+    const isClient = appointment.clientId.toString() === userId;
 
-    appointment.status = 'cancelled';
+    if (!isCounselor && !isClient) {
+      return res.status(403).json({ message: 'Not authorized for this appointment' });
+    }
+    
+    if ((status === 'confirmed' || status === 'completed') && !isCounselor) {
+      return res.status(403).json({ message: 'Only the counselor can do that' });
+    }
+
+
+    if (status === 'cancelled' && appointment.status !== 'cancelled') {
+      const profile = await CounselorProfile.findOne({ userId: appointment.counselorId });
+      if (profile) {
+        const slot = profile.availableSlots.find(s => s.date === appointment.date && s.time === appointment.time);
+        if (slot) {
+          slot.isBooked = false;
+          await profile.save();
+        }
+      }
+    }
+
+    appointment.status = status;
     await appointment.save();
-    res.json({ message: 'Appointment cancelled successfully' });
+    res.json(appointment);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

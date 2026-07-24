@@ -1,5 +1,6 @@
 const CounselorProfile = require('../models/CounselorProfile');
 const User = require('../models/User');
+const Appointment = require('../models/Appointment');
 
 exports.getAllCounselors = async (req, res) => {
   try {
@@ -17,6 +18,44 @@ exports.getCounselorById = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+exports.getMyClients = async (req, res) => {
+  try {
+    const appointments = await Appointment.find({ counselorId: req.user.id })
+      .populate('clientId', 'name email phone createdAt')
+      .sort('-date');
+
+    const clientsMap = {};
+    appointments.forEach((appt) => {
+      const client = appt.clientId;
+      if (!client) return;
+      const id = client._id.toString();
+      if (!clientsMap[id]) {
+        clientsMap[id] = {
+          _id: client._id,
+          name: client.name,
+          email: client.email,
+          phone: client.phone || '',
+          clientSince: client.createdAt,
+          sessions: [],
+        };
+      }
+      clientsMap[id].sessions.push({
+        _id: appt._id,
+        date: appt.date,
+        time: appt.time,
+        sessionType: appt.sessionType,
+        status: appt.status,
+        paymentStatus: appt.paymentStatus,
+      });
+    });
+
+    res.json(Object.values(clientsMap));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.upsertProfile = async (req, res) => {
   const { bio, expertise, sessionTypes, pricePerSession, availableSlots } = req.body;
   try {
