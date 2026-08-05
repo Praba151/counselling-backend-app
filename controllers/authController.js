@@ -5,15 +5,31 @@ const jwt = require('jsonwebtoken');
 exports.register = async (req, res) => {
   const { name, email, password, role } = req.body;
   try {
-    if(!name || !email || !password){
-      return res.status(400).json({ message : "All fields are required"})
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "All fields are required" });
     }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Please enter a valid email address" });
+    }
+
+    if (!email.toLowerCase().endsWith('@gmail.com')) {
+      return res.status(400).json({ message: "Only @gmail.com email addresses are allowed" });
+    }
+
+    const nameRegex = /^[a-zA-Z\s.]{2,50}$/;
+    if (!nameRegex.test(name.trim())) {
+      return res.status(400).json({ message: "Please enter a valid name (letters only)" });
+    }
+
     const exists = await User.findOne({ email });
     if (exists) return res.status(400).json({ message: 'Email already registered' });
+
     const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, password: hashed, role });
+    const user = await User.create({ name: name.trim(), email: email.toLowerCase(), password: hashed, role });
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    
+
     res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role } });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -44,7 +60,7 @@ exports.login = async (req, res) => {
     if (!match) return res.status(400).json({ message: 'Wrong password' });
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    
+
     res.json({ token, user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role } });
   } catch (err) {
     res.status(500).json({ message: err.message });
