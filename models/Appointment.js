@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 
 const appointmentSchema = new mongoose.Schema({
   clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  counselorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  counselorId: { type: mongoose.Schema.Types.ObjectId, ref: 'CounselorProfile', required: true },
+  counselorUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   date: { type: String, required: true },
   time: { type: String, required: true },
   sessionType: { type: String, required: true },
