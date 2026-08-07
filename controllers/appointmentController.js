@@ -3,7 +3,6 @@ const CounselorProfile = require('../models/CounselorProfile');
 const User = require('../models/User');
 const nodemailer = require('nodemailer');
 
-// 1. BOOK APPOINTMENT (With automated email confirmation)
 exports.bookAppointment = async (req, res) => {
   const { counselorId, date, time, sessionType } = req.body;
   try {
@@ -25,7 +24,7 @@ exports.bookAppointment = async (req, res) => {
       sessionType
     });
 
-    // --- SEND CONFIRMATION EMAIL ---
+  
     try {
       const client = await User.findById(req.user.id);
       const counselor = await User.findById(counselorId);
@@ -39,7 +38,6 @@ exports.bookAppointment = async (req, res) => {
           },
         });
 
-        // Send email to Client
         await transporter.sendMail({
           from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
           to: client.email,
@@ -57,7 +55,7 @@ exports.bookAppointment = async (req, res) => {
           `,
         });
 
-        // Send notification email to Counselor
+        
         await transporter.sendMail({
           from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
           to: counselor.email,
@@ -83,6 +81,24 @@ exports.bookAppointment = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+exports.getMyAppointments = async (req, res) => {
+  try {
+    const filter = req.user.role === 'client'
+      ? { clientId: req.user.id }
+      : { counselorId: req.user.id };
+
+    const appointments = await Appointment.find(filter)
+      .populate('clientId', 'name email')
+      .populate('counselorId', 'name email')
+      .sort('-createdAt');
+
+    res.json(appointments);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.updateStatus = async (req, res) => {
   try {
     const appointment = await Appointment.findById(req.params.id);
@@ -96,11 +112,10 @@ exports.updateStatus = async (req, res) => {
     if (!isCounselor && !isClient) {
       return res.status(403).json({ message: 'Not authorized for this appointment' });
     }
-    
+
     if ((status === 'confirmed' || status === 'completed') && !isCounselor) {
       return res.status(403).json({ message: 'Only the counselor can do that' });
     }
-
 
     if (status === 'cancelled' && appointment.status !== 'cancelled') {
       const profile = await CounselorProfile.findOne({ userId: appointment.counselorId });
