@@ -24,63 +24,65 @@ exports.bookAppointment = async (req, res) => {
       sessionType
     });
 
-  
-    try {
-      const client = await User.findById(req.user.id);
-      const counselor = await User.findById(counselorId);
-
-      if (client && counselor) {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-        });
-
-        await transporter.sendMail({
-          from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
-          to: client.email,
-          subject: 'Appointment Booking Confirmation - MindBridge',
-          html: `
-            <h3>Booking Confirmed!</h3>
-            <p>Hello <strong>${client.name}</strong>,</p>
-            <p>Your appointment with <strong>${counselor.name}</strong> has been successfully booked.</p>
-            <ul>
-              <li><strong>Date:</strong> ${date}</li>
-              <li><strong>Time:</strong> ${time}</li>
-              <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
-            </ul>
-            <p>Thank you for choosing MindBridge.</p>
-          `,
-        });
-
-        
-        await transporter.sendMail({
-          from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
-          to: counselor.email,
-          subject: 'New Appointment Booking - MindBridge',
-          html: `
-            <h3>New Booking Alert</h3>
-            <p>Hello <strong>${counselor.name}</strong>,</p>
-            <p>You have a new booking from <strong>${client.name}</strong>.</p>
-            <ul>
-              <li><strong>Date:</strong> ${date}</li>
-              <li><strong>Time:</strong> ${time}</li>
-              <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
-            </ul>
-          `,
-        });
-      }
-    } catch (emailErr) {
-      console.error('Failed to send confirmation email:', emailErr.message);
-    }
-
     res.status(201).json(appointment);
+
+    sendBookingEmails(req.user.id, counselorId, date, time, sessionType).catch(emailErr => {
+      console.error('Failed to send confirmation email:', emailErr.message);
+    });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
+async function sendBookingEmails(clientId, counselorId, date, time, sessionType) {
+  const client = await User.findById(clientId);
+  const counselor = await User.findById(counselorId);
+
+  if (!client || !counselor) return;
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
+    to: client.email,
+    subject: 'Appointment Booking Confirmation - MindBridge',
+    html: `
+      <h3>Booking Confirmed!</h3>
+      <p>Hello <strong>${client.name}</strong>,</p>
+      <p>Your appointment with <strong>${counselor.name}</strong> has been successfully booked.</p>
+      <ul>
+        <li><strong>Date:</strong> ${date}</li>
+        <li><strong>Time:</strong> ${time}</li>
+        <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
+      </ul>
+      <p>Thank you for choosing MindBridge.</p>
+    `,
+  });
+
+
+  await transporter.sendMail({
+    from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
+    to: counselor.email,
+    subject: 'New Appointment Booking - MindBridge',
+    html: `
+      <h3>New Booking Alert</h3>
+      <p>Hello <strong>${counselor.name}</strong>,</p>
+      <p>You have a new booking from <strong>${client.name}</strong>.</p>
+      <ul>
+        <li><strong>Date:</strong> ${date}</li>
+        <li><strong>Time:</strong> ${time}</li>
+        <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
+      </ul>
+    `,
+  });
+}
 
 exports.getMyAppointments = async (req, res) => {
   try {
