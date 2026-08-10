@@ -54,24 +54,9 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
 
-    let videoRoomUrl = null;
-    try {
-      const dailyRes = await fetch('https://api.daily.co/v1/rooms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
-        },
-        body: JSON.stringify({
-          name: `session-${appointmentId}`,
-          properties: { exp: Math.floor(Date.now() / 1000) + 86400 }, // expires in 24 hours
-        }),
-      });
-      const dailyData = await dailyRes.json();
-      videoRoomUrl = dailyData.url;
-    } catch (e) {
-      console.log('Daily.co room creation failed:', e.message);
-    }
+    // 🟢 REPLACED Daily.co API call with a free Jitsi Meet link — no API call, no card, no waiting.
+    // Each appointment gets its own unique, private-enough room based on its ID.
+    const videoRoomUrl = `https://meet.jit.si/session-${appointmentId}`;
 
     const appointment = await Appointment.findByIdAndUpdate(
       appointmentId,
@@ -90,41 +75,47 @@ const verifyPayment = async (req, res) => {
       { razorpayPaymentId, status: 'paid' }
     );
 
-    try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
-      await transporter.sendMail({
-        from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
-        to: appointment.clientId?.email,
-        subject: '✅ Booking Confirmed — MindBridge',
-        html: `
-          <h2>Your session is confirmed!</h2>
-          <p>Hi ${appointment.clientId?.name},</p>
-          <p>Your counseling session has been booked and payment received.</p>
-          <ul>
-            <li><strong>Counselor:</strong> ${appointment.counselorId?.name}</li>
-            <li><strong>Date:</strong> ${appointment.date}</li>
-            <li><strong>Time:</strong> ${appointment.time}</li>
-            <li><strong>Session Type:</strong> ${appointment.sessionType}</li>
-          </ul>
-          ${videoRoomUrl ? `<p>🎥 <a href="${videoRoomUrl}">Click here to join your video call</a></p>` : ''}
-          <p>See you soon!</p>
-        `,
-      });
-    } catch (emailErr) {
-      console.log('Email send failed:', emailErr.message);
-    }
-
+    // 🟢 Respond to the client IMMEDIATELY — don't make them wait for the email to send
     res.json({ message: 'Payment verified and booking confirmed', appointment });
+
+    // 🟢 Send confirmation email in the BACKGROUND, after the response is already sent
+    sendConfirmationEmail(appointment, videoRoomUrl).catch(emailErr => {
+      console.log('Email send failed:', emailErr.message);
+    });
+
   } catch (err) {
     res.status(500).json({ message: 'Verification failed', error: err.message });
   }
 };
+
+// 🟢 Extracted email logic — runs independently, doesn't block the payment response
+async function sendConfirmationEmail(appointment, videoRoomUrl) {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  await transporter.sendMail({
+    from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
+    to: appointment.clientId?.email,
+    subject: '✅ Booking Confirmed — MindBridge',
+    html: `
+      <h2>Your session is confirmed!</h2>
+      <p>Hi ${appointment.clientId?.name},</p>
+      <p>Your counseling session has been booked and payment received.</p>
+      <ul>
+        <li><strong>Counselor:</strong> ${appointment.counselorId?.name}</li>
+        <li><strong>Date:</strong> ${appointment.date}</li>
+        <li><strong>Time:</strong> ${appointment.time}</li>
+        <li><strong>Session Type:</strong> ${appointment.sessionType}</li>
+      </ul>
+      ${videoRoomUrl ? `<p>🎥 <a href="${videoRoomUrl}">Click here to join your video call</a></p>` : ''}
+      <p>See you soon!</p>
+    `,
+  });
+}
 
 const getMyPayments = async (req, res) => {
   try {
