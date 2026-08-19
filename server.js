@@ -41,7 +41,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/counselors", counselorRoutes);
 app.use("/api/session-notes", sessionNotesRoutes);
-app.use("/api/payments", paymentRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/email", emailRoutes);
 const PORT = process.env.PORT || 5000;
