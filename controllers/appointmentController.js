@@ -42,7 +42,12 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
   if (!client || !counselor) return;
 
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    family: 4,
+    connectionTimeout: 15000,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -50,7 +55,7 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
   });
 
   await transporter.sendMail({
-    from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
+    from: `"Counseling App" <${process.env.EMAIL_USER}>`,
     to: client.email,
     subject: 'Appointment Booking Confirmation - MindBridge',
     html: `
@@ -68,7 +73,7 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
 
 
   await transporter.sendMail({
-    from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
+    from: `"Counseling App" <${process.env.EMAIL_USER}>`,
     to: counselor.email,
     subject: 'New Appointment Booking - MindBridge',
     html: `
