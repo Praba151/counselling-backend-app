@@ -25,7 +25,6 @@ const createOrder = async (req, res) => {
       receipt: `receipt_${appointmentId}`,
     });
 
-    
     await Payment.create({
       clientId: req.user.id,
       appointmentId,
@@ -36,13 +35,21 @@ const createOrder = async (req, res) => {
 
     res.json({ orderId: order.id, amount: order.amount });
   } catch (err) {
+    console.error('Create Order Error:', err);
     res.status(500).json({ message: 'Order creation failed', error: err.message });
   }
 };
 
 const verifyPayment = async (req, res) => {
+  console.log('🚀 VERIFY PAYMENT ROUTE HIT! Payload:', req.body);
   try {
     const { razorpayOrderId, razorpayPaymentId, razorpaySignature, appointmentId } = req.body;
+
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !appointmentId) {
+      console.log('❌ Missing required parameters in body');
+      return res.status(400).json({ message: 'Missing payment parameters' });
+    }
+
     const body = razorpayOrderId + '|' + razorpayPaymentId;
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
@@ -50,14 +57,14 @@ const verifyPayment = async (req, res) => {
       .digest('hex');
 
     if (expectedSignature !== razorpaySignature) {
+      console.log('❌ Invalid Razorpay Signature');
       await Payment.findOneAndUpdate({ razorpayOrderId }, { status: 'failed' });
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
 
-    // 🟢 REPLACED Daily.co API call with a free Jitsi Meet link — no API call, no card, no waiting.
-    // Each appointment gets its own unique, private-enough room based on its ID.
     const videoRoomUrl = `https://meet.jit.si/session-${appointmentId}`;
 
+    // Direct populate since clientId & counselorId reference User model directly
     const appointment = await Appointment.findByIdAndUpdate(
       appointmentId,
       {
@@ -67,29 +74,42 @@ const verifyPayment = async (req, res) => {
         videoRoomUrl,
       },
       { new: true }
-    ).populate('clientId counselorId');
+    )
+      .populate('clientId', 'name email')
+      .populate('counselorId', 'name email');
 
-    
     await Payment.findOneAndUpdate(
       { razorpayOrderId },
       { razorpayPaymentId, status: 'paid' }
     );
 
-    // 🟢 Respond to the client IMMEDIATELY — don't make them wait for the email to send
-    res.json({ message: 'Payment verified and booking confirmed', appointment });
+    // Extract email & names directly from User objects
+    const clientEmail = appointment.clientId?.email;
+    const clientName = appointment.clientId?.name || 'Client';
+    const counselorName = appointment.counselorId?.name || 'Counselor';
 
-    // 🟢 Send confirmation email in the BACKGROUND, after the response is already sent
-    sendConfirmationEmail(appointment, videoRoomUrl).catch(emailErr => {
-      console.log('Email send failed:', emailErr.message);
-    });
+    console.log('📧 Attempting to send confirmation email to:', clientEmail);
+
+    if (clientEmail) {
+      try {
+        await sendConfirmationEmail(appointment, clientEmail, clientName, counselorName, videoRoomUrl);
+        console.log('✅ Confirmation email sent successfully to:', clientEmail);
+      } catch (emailErr) {
+        console.error('❌ Email send failed:', emailErr.message);
+      }
+    } else {
+      console.log('⚠️ Could not send email: Client email is missing or undefined.');
+    }
+
+    return res.json({ message: 'Payment verified and booking confirmed', appointment });
 
   } catch (err) {
-    res.status(500).json({ message: 'Verification failed', error: err.message });
+    console.error('❌ Verification Exception:', err);
+    return res.status(500).json({ message: 'Verification failed', error: err.message });
   }
 };
 
-// 🟢 Extracted email logic — runs independently, doesn't block the payment response
-async function sendConfirmationEmail(appointment, videoRoomUrl) {
+async function sendConfirmationEmail(appointment, clientEmail, clientName, counselorName, videoRoomUrl) {
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -97,16 +117,17 @@ async function sendConfirmationEmail(appointment, videoRoomUrl) {
       pass: process.env.EMAIL_PASS,
     },
   });
+
   await transporter.sendMail({
     from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
-    to: appointment.clientId?.email,
-    subject: '✅ Booking Confirmed — MindBridge',
+    to: clientEmail,
+    subject: '✅ Booking Confirmed — Counselling App',
     html: `
       <h2>Your session is confirmed!</h2>
-      <p>Hi ${appointment.clientId?.name},</p>
+      <p>Hi ${clientName},</p>
       <p>Your counseling session has been booked and payment received.</p>
       <ul>
-        <li><strong>Counselor:</strong> ${appointment.counselorId?.name}</li>
+        <li><strong>Counselor:</strong> ${counselorName}</li>
         <li><strong>Date:</strong> ${appointment.date}</li>
         <li><strong>Time:</strong> ${appointment.time}</li>
         <li><strong>Session Type:</strong> ${appointment.sessionType}</li>

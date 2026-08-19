@@ -9,26 +9,22 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // 1️⃣ Basic email format check (must look like a real email: text@text.text)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Please enter a valid email address" });
     }
 
-    // 2️⃣ Optional: restrict to only Gmail addresses (remove this block if not needed)
-    if (!email.toLowerCase().endsWith('@gmail.com')) {
-      return res.status(400).json({ message: "Only @gmail.com email addresses are allowed" });
+    if (!email.toLowerCase().endsWith('@gmail.com','@guvi.in')) {
+      return res.status(400).json({ message: "Only valid email addresses are allowed" });
     }
 
-    // 3️⃣ Basic name check — prevent junk like emails or symbols being used as a name
     const nameRegex = /^[a-zA-Z\s.]{2,50}$/;
     if (!nameRegex.test(name.trim())) {
       return res.status(400).json({ message: "Please enter a valid name (letters only)" });
     }
 
-    // 4️⃣ Phone number check — must be exactly 10 digits (Indian mobile numbers)
     const cleanedPhone = phone.trim().replace(/\s+/g, '');
-    const phoneRegex = /^[6-9]\d{9}$/; // starts with 6-9, exactly 10 digits total
+    const phoneRegex = /^[6-9]\d{9}$/; 
     if (!phoneRegex.test(cleanedPhone)) {
       return res.status(400).json({ message: "Please enter a valid 10-digit phone number" });
     }
@@ -59,8 +55,6 @@ exports.register = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const { name, phone } = req.body;
-
-    // 🟢 If phone is being updated, validate it here too (Edit Profile flow)
     if (phone !== undefined) {
       const cleanedPhone = phone.trim().replace(/\s+/g, '');
       const phoneRegex = /^[6-9]\d{9}$/;
