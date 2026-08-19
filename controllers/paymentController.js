@@ -46,7 +46,7 @@ const verifyPayment = async (req, res) => {
     const { razorpayOrderId, razorpayPaymentId, razorpaySignature, appointmentId } = req.body;
 
     if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !appointmentId) {
-      console.log('❌ Missing required parameters in body');
+      console.log(' Missing required parameters in body');
       return res.status(400).json({ message: 'Missing payment parameters' });
     }
 
@@ -57,14 +57,13 @@ const verifyPayment = async (req, res) => {
       .digest('hex');
 
     if (expectedSignature !== razorpaySignature) {
-      console.log('❌ Invalid Razorpay Signature');
+      console.log(' Invalid Razorpay Signature');
       await Payment.findOneAndUpdate({ razorpayOrderId }, { status: 'failed' });
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
 
     const videoRoomUrl = `https://meet.jit.si/session-${appointmentId}`;
 
-    // Direct populate since clientId & counselorId reference User model directly
     const appointment = await Appointment.findByIdAndUpdate(
       appointmentId,
       {
@@ -83,7 +82,6 @@ const verifyPayment = async (req, res) => {
       { razorpayPaymentId, status: 'paid' }
     );
 
-    // Extract email & names directly from User objects
     const clientEmail = appointment.clientId?.email;
     const clientName = appointment.clientId?.name || 'Client';
     const counselorName = appointment.counselorId?.name || 'Counselor';
@@ -111,7 +109,12 @@ const verifyPayment = async (req, res) => {
 
 async function sendConfirmationEmail(appointment, clientEmail, clientName, counselorName, videoRoomUrl) {
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    family: 4,
+    connectionTimeout: 15000,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
