@@ -23,7 +23,12 @@ exports.sendEmail = async (req, res) => {
     const recipient = isSenderClient ? appointment.counselorId : appointment.clientId;
 
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      family: 4,
+      connectionTimeout: 15000,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
