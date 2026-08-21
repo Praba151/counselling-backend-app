@@ -1,22 +1,33 @@
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-const dns = require('dns');
 const Appointment = require('../models/Appointment');
 const Payment = require('../models/Payment');
-const nodemailer = require('nodemailer');
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-function getGmailIPv4Host() {
-  return new Promise((resolve, reject) => {
-    dns.lookup('smtp.gmail.com', { family: 4 }, (err, address) => {
-      if (err) return reject(err);
-      resolve(address);
-    });
+async function sendViaBrevo({ toEmail, toName, subject, html }) {
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: 'MindBridge Counseling', email: process.env.EMAIL_USER },
+      to: [{ email: toEmail, name: toName }],
+      subject,
+      htmlContent: html,
+    }),
   });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Brevo API error (${response.status}): ${errText}`);
+  }
 }
 
 const createOrder = async (req, res) => {
@@ -51,12 +62,11 @@ const createOrder = async (req, res) => {
 };
 
 const verifyPayment = async (req, res) => {
-  console.log(' VERIFY PAYMENT ROUTE HIT! Payload:', req.body);
+  console.log('🚀 VERIFY PAYMENT ROUTE HIT! Payload:', req.body);
   try {
     const { razorpayOrderId, razorpayPaymentId, razorpaySignature, appointmentId } = req.body;
 
     if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !appointmentId) {
-      console.log('Missing required parameters in body');
       return res.status(400).json({ message: 'Missing payment parameters' });
     }
 
@@ -67,7 +77,6 @@ const verifyPayment = async (req, res) => {
       .digest('hex');
 
     if (expectedSignature !== razorpaySignature) {
-      console.log('Invalid Razorpay Signature');
       await Payment.findOneAndUpdate({ razorpayOrderId }, { status: 'failed' });
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
@@ -96,75 +105,41 @@ const verifyPayment = async (req, res) => {
     const clientName = appointment.clientId?.name || 'Client';
     const counselorName = appointment.counselorId?.name || 'Counselor';
 
-    console.log(' Attempting to send confirmation email to:', clientEmail);
+    console.log('📧 Attempting to send confirmation email to:', clientEmail);
 
     if (clientEmail) {
       try {
-        await sendConfirmationEmail(appointment, clientEmail, clientName, counselorName, videoRoomUrl);
-        console.log(' Confirmation email sent successfully to:', clientEmail);
+        await sendViaBrevo({
+          toEmail: clientEmail,
+          toName: clientName,
+          subject: '✅ Booking Confirmed — Counselling App',
+          html: `
+            <h2>Your session is confirmed!</h2>
+            <p>Hi ${clientName},</p>
+            <p>Your counseling session has been booked and payment received.</p>
+            <ul>
+              <li><strong>Counselor:</strong> ${counselorName}</li>
+              <li><strong>Date:</strong> ${appointment.date}</li>
+              <li><strong>Time:</strong> ${appointment.time}</li>
+              <li><strong>Session Type:</strong> ${appointment.sessionType}</li>
+            </ul>
+            ${videoRoomUrl ? `<p>🎥 <a href="${videoRoomUrl}">Click here to join your video call</a></p>` : ''}
+            <p>See you soon!</p>
+          `,
+        });
+        console.log('✅ Confirmation email sent successfully to:', clientEmail);
       } catch (emailErr) {
-        console.error(' Email send failed after all retries:', emailErr.message);
+        console.error('❌ Email send failed:', emailErr.message);
       }
-    } else {
-      console.log(' Could not send email: Client email is missing or undefined.');
     }
 
     return res.json({ message: 'Payment verified and booking confirmed', appointment });
 
   } catch (err) {
-    console.error(' Verification Exception:', err);
+    console.error('❌ Verification Exception:', err);
     return res.status(500).json({ message: 'Verification failed', error: err.message });
   }
 };
-
-async function sendConfirmationEmail(appointment, clientEmail, clientName, counselorName, videoRoomUrl, attempt = 1) {
-  const MAX_ATTEMPTS = 3;
-
-  try {
-    const ipv4Host = await getGmailIPv4Host();
-
-    const transporter = nodemailer.createTransport({
-      host: ipv4Host,  
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      tls: { servername: 'smtp.gmail.com' },  
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 15000,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: `"MindBridge Counseling" <${process.env.EMAIL_USER}>`,
-      to: clientEmail,
-      subject: ' Booking Confirmed — Counselling App',
-      html: `
-        <h2>Your session is confirmed!</h2>
-        <p>Hi ${clientName},</p>
-        <p>Your counseling session has been booked and payment received.</p>
-        <ul>
-          <li><strong>Counselor:</strong> ${counselorName}</li>
-          <li><strong>Date:</strong> ${appointment.date}</li>
-          <li><strong>Time:</strong> ${appointment.time}</li>
-          <li><strong>Session Type:</strong> ${appointment.sessionType}</li>
-        </ul>
-        ${videoRoomUrl ? `<p>🎥 <a href="${videoRoomUrl}">Click here to join your video call</a></p>` : ''}
-        <p>See you soon!</p>
-      `,
-    });
-  } catch (err) {
-    console.log(` [Attempt ${attempt}] Email failed:`, err.message);
-    if (attempt < MAX_ATTEMPTS) {
-      await new Promise(r => setTimeout(r, attempt * 4000));
-      return sendConfirmationEmail(appointment, clientEmail, clientName, counselorName, videoRoomUrl, attempt + 1);
-    }
-    throw err;
-  }
-}
 
 const getMyPayments = async (req, res) => {
   try {

@@ -1,16 +1,27 @@
 const Appointment = require('../models/Appointment');
 const CounselorProfile = require('../models/CounselorProfile');
 const User = require('../models/User');
-const dns = require('dns');
-const nodemailer = require('nodemailer');
 
-function getGmailIPv4Host() {
-  return new Promise((resolve, reject) => {
-    dns.lookup('smtp.gmail.com', { family: 4 }, (err, address) => {
-      if (err) return reject(err);
-      resolve(address);
-    });
+async function sendViaBrevo({ toEmail, toName, subject, html }) {
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: 'MindBridge Counseling', email: process.env.EMAIL_USER },
+      to: [{ email: toEmail, name: toName }],
+      subject,
+      htmlContent: html,
+    }),
   });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Brevo API error (${response.status}): ${errText}`);
+  }
 }
 
 exports.bookAppointment = async (req, res) => {
@@ -37,7 +48,7 @@ exports.bookAppointment = async (req, res) => {
     res.status(201).json(appointment);
 
     sendBookingEmails(req.user.id, counselorId, date, time, sessionType).catch(emailErr => {
-      console.error('Failed to send confirmation email after all retries:', emailErr.message);
+      console.error('Failed to send booking emails:', emailErr.message);
     });
 
   } catch (err) {
@@ -45,71 +56,44 @@ exports.bookAppointment = async (req, res) => {
   }
 };
 
-async function sendBookingEmails(clientId, counselorId, date, time, sessionType, attempt = 1) {
-  const MAX_ATTEMPTS = 3;
+async function sendBookingEmails(clientId, counselorId, date, time, sessionType) {
   const client = await User.findById(clientId);
   const counselor = await User.findById(counselorId);
 
   if (!client || !counselor) return;
 
-  try {
-    const ipv4Host = await getGmailIPv4Host();
+  await sendViaBrevo({
+    toEmail: client.email,
+    toName: client.name,
+    subject: 'Appointment Booking Confirmation - MindBridge',
+    html: `
+      <h3>Booking Confirmed!</h3>
+      <p>Hello <strong>${client.name}</strong>,</p>
+      <p>Your appointment with <strong>${counselor.name}</strong> has been successfully booked.</p>
+      <ul>
+        <li><strong>Date:</strong> ${date}</li>
+        <li><strong>Time:</strong> ${time}</li>
+        <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
+      </ul>
+      <p>Thank you for choosing MindBridge.</p>
+    `,
+  });
 
-    const transporter = nodemailer.createTransport({
-      host: ipv4Host,
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      tls: { servername: 'smtp.gmail.com' },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 15000,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: `"Counseling App" <${process.env.EMAIL_USER}>`,
-      to: client.email,
-      subject: 'Appointment Booking Confirmation - MindBridge',
-      html: `
-        <h3>Booking Confirmed!</h3>
-        <p>Hello <strong>${client.name}</strong>,</p>
-        <p>Your appointment with <strong>${counselor.name}</strong> has been successfully booked.</p>
-        <ul>
-          <li><strong>Date:</strong> ${date}</li>
-          <li><strong>Time:</strong> ${time}</li>
-          <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
-        </ul>
-        <p>Thank you for choosing MindBridge.</p>
-      `,
-    });
-
-    await transporter.sendMail({
-      from: `"Counseling App" <${process.env.EMAIL_USER}>`,
-      to: counselor.email,
-      subject: 'New Appointment Booking - MindBridge',
-      html: `
-        <h3>New Booking Alert</h3>
-        <p>Hello <strong>${counselor.name}</strong>,</p>
-        <p>You have a new booking from <strong>${client.name}</strong>.</p>
-        <ul>
-          <li><strong>Date:</strong> ${date}</li>
-          <li><strong>Time:</strong> ${time}</li>
-          <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
-        </ul>
-      `,
-    });
-  } catch (err) {
-    console.log(` [Attempt ${attempt}] Booking email failed:`, err.message);
-    if (attempt < MAX_ATTEMPTS) {
-      await new Promise(r => setTimeout(r, attempt * 4000));
-      return sendBookingEmails(clientId, counselorId, date, time, sessionType, attempt + 1);
-    }
-    throw err;
-  }
+  await sendViaBrevo({
+    toEmail: counselor.email,
+    toName: counselor.name,
+    subject: 'New Appointment Booking - MindBridge',
+    html: `
+      <h3>New Booking Alert</h3>
+      <p>Hello <strong>${counselor.name}</strong>,</p>
+      <p>You have a new booking from <strong>${client.name}</strong>.</p>
+      <ul>
+        <li><strong>Date:</strong> ${date}</li>
+        <li><strong>Time:</strong> ${time}</li>
+        <li><strong>Session Type:</strong> ${sessionType || 'Online'}</li>
+      </ul>
+    `,
+  });
 }
 
 exports.getMyAppointments = async (req, res) => {
