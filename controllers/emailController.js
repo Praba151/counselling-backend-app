@@ -26,10 +26,10 @@ exports.sendEmail = async (req, res) => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        sender: { name: 'MindBridge Counseling', email: process.env.EMAIL_USER },
+        sender: { name: 'Counseling App', email: process.env.EMAIL_USER },
         to: [{ email: recipient.email, name: recipient.name }],
         replyTo: { email: sender.email, name: sender.name },
-        subject: subject || `Message from ${sender.name} (MindBridge)`,
+        subject: subject || `Message from ${sender.name} (Counselling App)`,
         htmlContent: `
           <p><strong>${sender.name}</strong> sent you a message regarding your session on
           ${appointment.date} at ${appointment.time}:</p>

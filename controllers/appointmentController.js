@@ -11,7 +11,7 @@ async function sendViaBrevo({ toEmail, toName, subject, html }) {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      sender: { name: 'MindBridge Counseling', email: process.env.EMAIL_USER },
+      sender: { name: 'Counseling App', email: process.env.EMAIL_USER },
       to: [{ email: toEmail, name: toName }],
       subject,
       htmlContent: html,
@@ -65,7 +65,7 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
   await sendViaBrevo({
     toEmail: client.email,
     toName: client.name,
-    subject: 'Appointment Booking Confirmation - MindBridge',
+    subject: 'Appointment Booking Confirmation - Counselling',
     html: `
       <h3>Booking Confirmed!</h3>
       <p>Hello <strong>${client.name}</strong>,</p>
@@ -82,7 +82,7 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
   await sendViaBrevo({
     toEmail: counselor.email,
     toName: counselor.name,
-    subject: 'New Appointment Booking - MindBridge',
+    subject: 'New Appointment Booking - Counselling ',
     html: `
       <h3>New Booking Alert</h3>
       <p>Hello <strong>${counselor.name}</strong>,</p>

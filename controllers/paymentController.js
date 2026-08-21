@@ -17,7 +17,7 @@ async function sendViaBrevo({ toEmail, toName, subject, html }) {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      sender: { name: 'MindBridge Counseling', email: process.env.EMAIL_USER },
+      sender: { name: ' Counselling App', email: process.env.EMAIL_USER },
       to: [{ email: toEmail, name: toName }],
       subject,
       htmlContent: html,
@@ -62,7 +62,6 @@ const createOrder = async (req, res) => {
 };
 
 const verifyPayment = async (req, res) => {
-  console.log('🚀 VERIFY PAYMENT ROUTE HIT! Payload:', req.body);
   try {
     const { razorpayOrderId, razorpayPaymentId, razorpaySignature, appointmentId } = req.body;
 
@@ -105,14 +104,14 @@ const verifyPayment = async (req, res) => {
     const clientName = appointment.clientId?.name || 'Client';
     const counselorName = appointment.counselorId?.name || 'Counselor';
 
-    console.log('📧 Attempting to send confirmation email to:', clientEmail);
+
 
     if (clientEmail) {
       try {
         await sendViaBrevo({
           toEmail: clientEmail,
           toName: clientName,
-          subject: '✅ Booking Confirmed — Counselling App',
+          subject: 'Booking Confirmed — Counselling App',
           html: `
             <h2>Your session is confirmed!</h2>
             <p>Hi ${clientName},</p>
@@ -123,20 +122,20 @@ const verifyPayment = async (req, res) => {
               <li><strong>Time:</strong> ${appointment.time}</li>
               <li><strong>Session Type:</strong> ${appointment.sessionType}</li>
             </ul>
-            ${videoRoomUrl ? `<p>🎥 <a href="${videoRoomUrl}">Click here to join your video call</a></p>` : ''}
+            ${videoRoomUrl ? `<p> <a href="${videoRoomUrl}">Click here to join your video call</a></p>` : ''}
             <p>See you soon!</p>
           `,
         });
-        console.log('✅ Confirmation email sent successfully to:', clientEmail);
+        console.log(' Confirmation email sent successfully to:', clientEmail);
       } catch (emailErr) {
-        console.error('❌ Email send failed:', emailErr.message);
+        console.error(' Email send failed:', emailErr.message);
       }
     }
 
     return res.json({ message: 'Payment verified and booking confirmed', appointment });
 
   } catch (err) {
-    console.error('❌ Verification Exception:', err);
+    console.error(' Verification Exception:', err);
     return res.status(500).json({ message: 'Verification failed', error: err.message });
   }
 };
