@@ -4,6 +4,8 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config();
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 
 const authRoutes = require("./routes/authRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
