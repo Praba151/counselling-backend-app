@@ -14,10 +14,6 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "Please enter a valid email address" });
     }
 
-    if (!email.toLowerCase().endsWith('@gmail.com','@guvi.in')) {
-      return res.status(400).json({ message: "Only valid email addresses are allowed" });
-    }
-
     const nameRegex = /^[a-zA-Z\s.]{2,50}$/;
     if (!nameRegex.test(name.trim())) {
       return res.status(400).json({ message: "Please enter a valid name (letters only)" });
