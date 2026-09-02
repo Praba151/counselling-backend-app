@@ -65,11 +65,11 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
   await sendViaBrevo({
     toEmail: client.email,
     toName: client.name,
-    subject: 'Appointment Booking Confirmation - Counselling',
+    subject: 'Booking Request Received - Counselling',
     html: `
-      <h3>Booking Confirmed!</h3>
+      <h3>Booking Initiated!</h3>
       <p>Hello <strong>${client.name}</strong>,</p>
-      <p>Your appointment with <strong>${counselor.name}</strong> has been successfully booked.</p>
+      <p>Your appointment with <strong>${counselor.name}</strong> has been successfully initiated.</p>
       <ul>
         <li><strong>Date:</strong> ${date}</li>
         <li><strong>Time:</strong> ${time}</li>
