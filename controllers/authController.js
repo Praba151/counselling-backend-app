@@ -1,6 +1,14 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const allowedDomains = [
+  '@gmail.com',
+  '@guvi.in',
+  '@outlook.com',
+  '@hotmail.com',
+  '@yahoo.com',
+  '@icloud.com',
+];
 
 exports.register = async (req, res) => {
   const { name, email, phone, password, role } = req.body;
@@ -14,6 +22,12 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "Please enter a valid email address" });
     }
 
+    const lowerEmail = email.toLowerCase();
+    const isAllowedDomain = allowedDomains.some(domain => lowerEmail.endsWith(domain));
+    if (!isAllowedDomain) {
+      return res.status(400).json({ message: `Only these email providers are allowed: ${allowedDomains.join(', ')}` });
+    }
+
     const nameRegex = /^[a-zA-Z\s.]{2,50}$/;
     if (!nameRegex.test(name.trim())) {
       return res.status(400).json({ message: "Please enter a valid name (letters only)" });
@@ -24,8 +38,9 @@ exports.register = async (req, res) => {
     if (!phoneRegex.test(cleanedPhone)) {
       return res.status(400).json({ message: "Please enter a valid 10-digit phone number" });
     }
-
-    const exists = await User.findOne({ email });
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    const exists = await User.findOne({ email: normalizedEmail });
     if (exists) return res.status(400).json({ message: 'Email already registered' });
 
     const phoneExists = await User.findOne({ phone: cleanedPhone });
@@ -34,7 +49,7 @@ exports.register = async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({
       name: name.trim(),
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       phone: cleanedPhone,
       password: hashed,
       role
@@ -76,7 +91,7 @@ exports.updateProfile = async (req, res) => {
 exports.login = async (req, res) => {
   const { email, password } = req.body;
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email:email.toLowerCase().trim() });
     if (!user) return res.status(400).json({ message: 'User not found' });
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ message: 'Wrong password' });
