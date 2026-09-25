@@ -57,7 +57,16 @@ exports.getMyClients = async (req, res) => {
 };
 
 exports.upsertProfile = async (req, res) => {
-  const { bio, expertise, sessionTypes, pricePerSession, availableSlots } = req.body;
+  let { bio, expertise, sessionTypes, pricePerSession, availableSlots } = req.body;
+  const photoUrl = req.file ? req.file.filename : undefined;
+
+
+  if (expertise && !Array.isArray(expertise)) expertise = [expertise];
+  if (sessionTypes && !Array.isArray(sessionTypes)) sessionTypes = [sessionTypes];
+  if (typeof availableSlots === 'string') {
+    try { availableSlots = JSON.parse(availableSlots); } catch { availableSlots = []; }
+  }
+
   try {
     let profile = await CounselorProfile.findOne({ userId: req.user.id });
     if (profile) {
@@ -66,9 +75,10 @@ exports.upsertProfile = async (req, res) => {
       profile.sessionTypes = sessionTypes;
       profile.pricePerSession = pricePerSession;
       profile.availableSlots = availableSlots;
+      if (photoUrl) profile.photoUrl = photoUrl;
       await profile.save();
     } else {
-      profile = await CounselorProfile.create({ userId: req.user.id, bio, expertise, sessionTypes, pricePerSession, availableSlots });
+      profile = await CounselorProfile.create({ userId: req.user.id, bio, expertise, sessionTypes, pricePerSession, availableSlots, photoUrl });
     }
     res.json(profile);
   } catch (err) {

@@ -6,6 +6,9 @@ const counselorProfileSchema = new mongoose.Schema({
   expertise: [{ type: String }],
   sessionTypes: [{ type: String }],
   pricePerSession: { type: Number, default: 500 },
+
+  photoUrl:{type:String , default:500},
+
   availableSlots: [{ 
     date: String, 
     time: String, 
