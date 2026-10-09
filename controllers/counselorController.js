@@ -85,3 +85,40 @@ exports.upsertProfile = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+exports.setSlotBlocked = async (req, res) => {
+  try {
+    const { date, time, blocked } = req.body;
+    if (!date || !time || typeof blocked !== 'boolean') {
+      return res.status(400).json({ message: 'date, time and blocked (true/false) are required' });
+    }
+
+    const profile = await CounselorProfile.findOneAndUpdate(
+      { userId: req.user.id, availableSlots: { $elemMatch: { date, time, isBooked: false } } },
+      { $set: { 'availableSlots.$.isBlocked': blocked } },      { returnDocument: 'after' }
+    );
+    if (!profile) {
+      return res.status(409).json({ message: 'Slot not found, or it is already booked. Cancel the booking first.' });
+    }
+    res.json(profile);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.setDayBlocked = async (req, res) => {
+  try {
+    const { date, blocked } = req.body;
+    if (!date || typeof blocked !== 'boolean') {
+      return res.status(400).json({ message: 'date and blocked (true/false) are required' });
+    }
+
+    const profile = await CounselorProfile.findOneAndUpdate(
+      { userId: req.user.id },
+      { $set: { 'availableSlots.$[s].isBlocked': blocked } },      { arrayFilters: [{ 's.date': date, 's.isBooked': false }], returnDocument: 'after' }
+    );
+    if (!profile) return res.status(404).json({ message: 'Profile not found' });
+    res.json(profile);
+  } catch (err) {
+    res.status(500).json({ message: err.message });  }
+};

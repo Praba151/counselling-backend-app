@@ -7,12 +7,13 @@ const counselorProfileSchema = new mongoose.Schema({
   sessionTypes: [{ type: String }],
   pricePerSession: { type: Number, default: 500 },
 
-  photoUrl:{type:String , default:500},
+  photoUrl:{type:String , default:''},
 
   availableSlots: [{ 
     date: String, 
     time: String, 
-    isBooked: { type: Boolean, default: false } 
+    isBooked: { type: Boolean, default: false },
+    isBlocked: { type: Boolean, default: false } 
   }],
   rating: { type: Number, default: 0 }
 });

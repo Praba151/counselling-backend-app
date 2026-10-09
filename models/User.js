@@ -7,6 +7,9 @@ const userSchema = new mongoose.Schema({
   phone: { type: String, required:true,unique:true },
 
   role: { type: String, enum: ['client', 'counselor'], default: 'client' },
+  resetCodeHash: { type: String, select: false },
+  resetCodeExpires: { type: Date, select: false },
+  resetCodeAttempts: { type: Number, default: 0, select: false },
   createdAt: { type: Date, default: Date.now }
 });
 

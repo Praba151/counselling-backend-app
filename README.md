@@ -11,14 +11,36 @@ Node.js + Express + MongoDB backend for the counseling platform (MERN stack).
 - Video Calls: Jitsi Meet 
 - Emails: Brevo API 
 
+## Features
 
-##  Booking Flows of the Backend
+- **Authentication & Authorization**: JWT-based authentication with role-based access control (Client vs. Counselor).
+- **Password Reset**: Secure 6-digit OTP email verification for account recovery via Brevo API.
+- **Appointment & Slot Management**: Real-time slot reservation and slot release logic on appointment cancellations.
+- **Razorpay Integration**: Server-side price calculation, order creation, signature verification, and automated refund processing with manual failover handling.
+- **Real-time Chat**: Socket.io real-time messaging with room authorization checks.
+- **Session Notes & Attachments**: Counselor session notes and file uploads using Cloudinary / local fallback storage.
+- **Email Notifications**: Transactional emails for booking confirmations, cancellations, and password reset codes.
 
-1. Client books → `POST /appointments/book` → checks the slot isn't already taken, sends booking-notification emails to both client and counselor (via Brevo)
-2. Client pays → `POST /payment/create-order` → creates a Razorpay order, logs a `Payment` record
-3. Razorpay confirms → `POST /payment/verify` → verifies the payment signature server-side, marks the appointment `confirmed` + `paid`, generates a Jitsi video link, sends a confirmation email (via Brevo)
-4. Session happens → client + counselor use the Jitsi link, chat in real time , and can email each other outside the session
-5. After the session → counselor writes session notes 
+
+## API Endpoints
+
+**Auth Routes (/api/auth)**
+- POST /register - Register new client or counselor
+- POST /login - User login & JWT issuance
+- POST /forgot-password - Request 6-digit OTP code via email
+- POST /reset-password - Verify OTP and update password
+
+**Counselor Routes (/api/counselors)**
+- GET / - Fetch all public counselor profiles
+- GET /profile - Get authenticated counselor profile
+- POST /slots - Add availability slot
+- DELETE /slots/:slotId - Remove availability slot
+- GET /appointments - Fetch counselor appointments
+
+**Appointment Routes (/api/appointments)**
+- POST /book - Create appointment & Razorpay order
+- POST /verify-payment - Confirm Razorpay signature
+- PUT /:id/status - Update appointment status / Cancel appointment (triggers automated Razorpay refund)
 
 ## Security Notes
 - Passwords hashed with bcryptjs, all protected routes require a JWT.

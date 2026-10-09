@@ -2,46 +2,42 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const Appointment = require('../models/Appointment');
 const Payment = require('../models/Payment');
+const CounselorProfile = require('../models/CounselorProfile');
+const { sendEmail: sendViaBrevo } = require('../utils/mailer');
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-async function sendViaBrevo({ toEmail, toName, subject, html }) {
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'api-key': process.env.BREVO_API_KEY,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      sender: { name: ' Counselling App', email: process.env.EMAIL_USER },
-      to: [{ email: toEmail, name: toName }],
-      subject,
-      htmlContent: html,
-    }),
-  });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Brevo API error (${response.status}): ${errText}`);
-  }
-}
 
 const createOrder = async (req, res) => {
   try {
-    const { amount, appointmentId } = req.body;
-
+  
+    const { appointmentId } = req.body;
     const appointment = await Appointment.findById(appointmentId);
     if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
     if (appointment.clientId.toString() !== req.user.id.toString()) {
       return res.status(403).json({ message: 'Not your appointment' });
     }
+    if (appointment.paymentStatus === 'paid') {
+      return res.status(400).json({ message: 'This appointment is already paid' });
+    }
+    if (appointment.status === 'cancelled') {
+      return res.status(400).json({ message: 'This appointment was cancelled' });
+    }
+
+    const profile = await CounselorProfile.findOne({ userId:appointment.counselorId} );
+    if (!profile) return res.status(404).json({ message: 'Counselor profile not found' });
+
+    const amount = Number(profile.pricePerSession);
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Invalid session price' });
+    }
 
     const order = await razorpay.orders.create({
-      amount: amount * 100,
+      amount: Math.round(amount * 100), 
       currency: 'INR',
       receipt: `receipt_${appointmentId}`,
     });
@@ -56,8 +52,9 @@ const createOrder = async (req, res) => {
 
     res.json({ orderId: order.id, amount: order.amount });
   } catch (err) {
-    console.error('Create Order Error:', err);
-    res.status(500).json({ message: 'Order creation failed', error: err.message });
+    console.error('Create Order Error:', err?.error || err);
+    const reason = err?.error?.decription || err.message || 'unknown error';
+    res.status(500).json({ message: 'Order creation failed' + reason });
   }
 };
 
@@ -69,6 +66,25 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Missing payment parameters' });
     }
 
+    
+    const payment = await Payment.findOne({
+      razorpayOrderId,
+      appointmentId,
+      clientId: req.user.id,
+    });
+    if (!payment) {
+      return res.status(400).json({ message: 'Payment does not match this appointment' });
+    }
+
+    
+    if (payment.status === 'paid') {
+      const existing = await Appointment.findById(appointmentId)
+        .populate('clientId', 'name email')
+        .populate('counselorId', 'name email');
+      return res.json({ message: 'Payment already verified', appointment: existing });
+    }
+
+    
     const body = razorpayOrderId + '|' + razorpayPaymentId;
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
@@ -76,18 +92,19 @@ const verifyPayment = async (req, res) => {
       .digest('hex');
 
     if (expectedSignature !== razorpaySignature) {
-      await Payment.findOneAndUpdate({ razorpayOrderId }, { status: 'failed' });
+      payment.status = 'failed';
+      await payment.save();
       return res.status(400).json({ message: 'Invalid payment signature' });
     }
 
-    const videoRoomUrl = `https://meet.jit.si/session-${appointmentId}`;
+    const videoRoomUrl = `https://meet.jit.si/session-${appointmentId}-${crypto.randomBytes(8).toString('hex')}`;
 
     const appointment = await Appointment.findByIdAndUpdate(
       appointmentId,
       {
         paymentStatus: 'paid',
         status: 'confirmed',
-        razorpayPaymentId,
+        amountPaid: payment.amount,
         videoRoomUrl,
       },
       { returnDocument: 'after' }
@@ -95,16 +112,13 @@ const verifyPayment = async (req, res) => {
       .populate('clientId', 'name email')
       .populate('counselorId', 'name email');
 
-    await Payment.findOneAndUpdate(
-      { razorpayOrderId },
-      { razorpayPaymentId, status: 'paid' }
-    );
+    payment.razorpayPaymentId = razorpayPaymentId;
+    payment.status = 'paid';
+    await payment.save();
 
     const clientEmail = appointment.clientId?.email;
     const clientName = appointment.clientId?.name || 'Client';
     const counselorName = appointment.counselorId?.name || 'Counselor';
-
-
 
     if (clientEmail) {
       try {

@@ -1,28 +1,12 @@
 const Appointment = require('../models/Appointment');
 const CounselorProfile = require('../models/CounselorProfile');
+const Payment = require('../models/Payment');
 const User = require('../models/User');
+const razorpay = require('../config/razorpay');
+const { sendEmail } = require('../utils/mailer');
 
-async function sendViaBrevo({ toEmail, toName, subject, html }) {
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'api-key': process.env.BREVO_API_KEY,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      sender: { name: 'Counseling App', email: process.env.EMAIL_USER },
-      to: [{ email: toEmail, name: toName }],
-      subject,
-      htmlContent: html,
-    }),
-  });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Brevo API error (${response.status}): ${errText}`);
-  }
-}
+const FULL_REFUND_HOURS = 0;
 
 exports.bookAppointment = async (req, res) => {
   const { counselorId, date, time, sessionType } = req.body;
@@ -31,11 +15,17 @@ exports.bookAppointment = async (req, res) => {
     if (!profile) return res.status(404).json({ message: 'Counselor profile not found' });
 
     const slot = profile.availableSlots.find(s => s.date === date && s.time === time);
-    if (!slot) return res.status(400).json({ message: 'Selected slot is not available' });
-    if (slot.isBooked) return res.status(409).json({ message: 'This slot has just been booked by someone else. Please pick another.' });
+    if (!slot || slot.isBlocked) return res.status(400).json({ message: 'Selected slot is not available' });
 
-    slot.isBooked = true;
-    await profile.save();
+
+    const locked = await CounselorProfile.findOneAndUpdate(
+      {
+        userId: counselorId,
+        availableSlots: { $elemMatch: { date, time, isBooked: false, isBlocked: { $ne: true } } },
+      },
+      { $set: { 'availableSlots.$.isBooked': true } }
+    );
+    if (!locked) return res.status(409).json({ message: 'This slot has just been booked by someone else. Please pick another.' });
 
     const appointment = await Appointment.create({
       clientId: req.user.id,
@@ -62,7 +52,7 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
 
   if (!client || !counselor) return;
 
-  await sendViaBrevo({
+  await sendEmail({
     toEmail: client.email,
     toName: client.name,
     subject: 'Booking Request Received - Counselling',
@@ -79,7 +69,7 @@ async function sendBookingEmails(clientId, counselorId, date, time, sessionType)
     `,
   });
 
-  await sendViaBrevo({
+  await sendEmail({
     toEmail: counselor.email,
     toName: counselor.name,
     subject: 'New Appointment Booking - Counselling ',
@@ -113,12 +103,55 @@ exports.getMyAppointments = async (req, res) => {
   }
 };
 
+
+const sessionStartTime = (appointment) => {
+  const d = new Date(`${appointment.date}T${appointment.time}:00+05:30`);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const isFullRefund = (appointment, cancelledBy) => {
+  if (cancelledBy === 'counselor') return true;
+  const start = sessionStartTime(appointment);
+  if (!start) return true; 
+  const hoursLeft = (start.getTime() - Date.now()) / (1000 * 60 * 60);
+  return hoursLeft >= FULL_REFUND_HOURS;
+};
+
+async function sendCancelEmails(appointment, cancelledBy, refundMessage) {
+  const client = await User.findById(appointment.clientId);
+  const counselor = await User.findById(appointment.counselorId);
+  if (!client || !counselor) return;
+
+  const who = cancelledBy === 'counselor' ? counselor.name : client.name;
+  const details = `
+    <ul>
+      <li><strong>Date:</strong> ${appointment.date}</li>
+      <li><strong>Time:</strong> ${appointment.time}</li>
+      <li><strong>Session Type:</strong> ${appointment.sessionType}</li>
+    </ul>`;
+
+  await sendEmail({
+    toEmail: client.email, toName: client.name,
+    subject: 'Appointment Cancelled - Counselling',
+    html: `<h3>Appointment Cancelled</h3><p>Hello <strong>${client.name}</strong>, your session with <strong>${counselor.name}</strong> was cancelled by <strong>${who}</strong>.</p>${details}<p>${refundMessage}</p>`,
+  });
+  await sendEmail({
+    toEmail: counselor.email, toName: counselor.name,
+    subject: 'Appointment Cancelled - Counselling',
+    html: `<h3>Appointment Cancelled</h3><p>Hello <strong>${counselor.name}</strong>, the session with <strong>${client.name}</strong> was cancelled by <strong>${who}</strong>. The time slot is open again.</p>${details}`,
+  });
+}
+
 exports.updateStatus = async (req, res) => {
   try {
     const appointment = await Appointment.findById(req.params.id);
     if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
 
     const { status } = req.body;
+    if (!['confirmed', 'completed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
     const userId = req.user.id.toString();
     const isCounselor = appointment.counselorId.toString() === userId;
     const isClient = appointment.clientId.toString() === userId;
@@ -131,7 +164,51 @@ exports.updateStatus = async (req, res) => {
       return res.status(403).json({ message: 'Only the counselor can do that' });
     }
 
-    if (status === 'cancelled' && appointment.status !== 'cancelled') {
+    if (appointment.status === 'cancelled') {
+      return res.status(400).json({ message: 'This appointment is already cancelled' });
+    }
+
+  
+    let refundMessage = '';
+    if (status === 'cancelled') {
+      if (appointment.status === 'completed') {
+        return res.status(400).json({ message: 'A completed session cannot be cancelled' });
+      }
+
+      const cancelledBy = isCounselor ? 'counselor' : 'client';
+
+      if (appointment.paymentStatus === 'paid') {
+        if (isFullRefund(appointment, cancelledBy)) {
+          const payment = await Payment.findOne({ appointmentId: appointment._id, status: 'paid' });
+          
+          if (payment && payment.razorpayPaymentId && payment.razorpayPaymentId.startsWith('pay_')) {
+            try {
+              await razorpay.payments.refund(payment.razorpayPaymentId, {
+                amount: Math.round(payment.amount * 100),
+                notes: { appointmentId: appointment._id.toString(), cancelledBy },
+              });
+              payment.status = 'refunded';
+              await payment.save();
+              appointment.paymentStatus = 'refunded';
+              appointment.refundStatus = 'refunded';
+              appointment.refundAmount = payment.amount;
+              refundMessage = `A full refund of ₹${payment.amount} has been started.`;
+            } catch (refundErr) {
+              console.error('Razorpay API error:', refundErr?.error?.description || refundErr.message);
+              appointment.refundStatus = 'manual';
+              refundMessage = 'Session cancelled. Automated refund failed, so the refund will be handled manually.';
+            }
+          } else {
+            appointment.refundStatus = 'manual';
+            refundMessage = 'Session cancelled. Payment record was manual or test data.';
+          }
+        } else {
+          appointment.refundStatus = 'not_eligible';
+          refundMessage = `This session starts in less than ${FULL_REFUND_HOURS} hours, so it is not eligible for a refund.`;
+        }
+      }
+
+    
       const profile = await CounselorProfile.findOne({ userId: appointment.counselorId });
       if (profile) {
         const slot = profile.availableSlots.find(s => s.date === appointment.date && s.time === appointment.time);
@@ -140,11 +217,17 @@ exports.updateStatus = async (req, res) => {
           await profile.save();
         }
       }
-    }
 
+      appointment.cancelledBy = cancelledBy;
+      appointment.cancelledAt = new Date();
+
+      sendCancelEmails(appointment, cancelledBy, refundMessage || 'No payment was made for this session.').catch(e =>
+        console.error('Failed to send cancellation emails:', e.message)
+      );
+    }
     appointment.status = status;
     await appointment.save();
-    res.json(appointment);
+    res.json({ ...appointment.toObject(), refundMessage });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
