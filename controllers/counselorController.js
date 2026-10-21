@@ -1,5 +1,4 @@
 const CounselorProfile = require('../models/CounselorProfile');
-const User = require('../models/User');
 const Appointment = require('../models/Appointment');
 
 exports.getAllCounselors = async (req, res) => {

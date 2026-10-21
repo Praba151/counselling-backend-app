@@ -53,7 +53,7 @@ const createOrder = async (req, res) => {
     res.json({ orderId: order.id, amount: order.amount });
   } catch (err) {
     console.error('Create Order Error:', err?.error || err);
-    const reason = err?.error?.decription || err.message || 'unknown error';
+    const reason = err?.error?.description || err.message || 'unknown error';
     res.status(500).json({ message: 'Order creation failed' + reason });
   }
 };

@@ -25,8 +25,5 @@ exports.getMessages = async (req, res) => {
   }
 };
 
-exports.saveMessage = async ({ appointmentId, senderId, senderName, text }) => {
-  return Message.create({ appointmentId, senderId, senderName, text });
-};
 
 exports.isAuthorizedForAppointment = isAuthorizedForAppointment;
